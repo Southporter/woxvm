@@ -1,0 +1,15 @@
+i = 10;
+var s = "String";
+// Comment
+/# Multiline Comment
+ #
+ #
+ #/
+1 != 2;
+1 == 1;
+1 < 2;
+2 > 1;
+func test() {
+  print("test");
+  return 1;
+}
