@@ -30,3 +30,17 @@ class Var extends Stmt {
 
   Var(this.name, this.expr);
 }
+
+class Block extends Stmt {
+  List<Stmt> statements;
+
+  Block(this.statements);
+}
+
+class If extends Stmt {
+  Expr condition;
+  Stmt branch;
+  Stmt? elseBranch;
+
+  If(this.condition, this.branch, this.elseBranch);
+}

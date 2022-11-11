@@ -39,6 +39,17 @@ class Variable extends Expr {
   Variable(this.name);
 }
 
+class Assign extends Expr {
+  Token name;
+  Expr value;
+
+  Assign(this.name, this.value);
+}
+
+class Logical extends Binary {
+  Logical(super.left, super.op, super.right);
+}
+
 abstract class Visitor<T> {
   T visit(Expr expr);
 }

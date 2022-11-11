@@ -4,7 +4,7 @@ import 'package:dlox/token.dart';
 import 'package:dlox/env.dart';
 
 class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
-  Environment env = Environment();
+  Environment env = Environment(null);
 
   @override dynamic visit(dynamic expr) {
     switch (expr.runtimeType) {
@@ -16,12 +16,20 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
         return visitBinary(expr);
       case e.Variable:
         return visitVariableExpr(expr);
+      case e.Assign:
+        return visitAssignExpr(expr);
+      case e.Logical:
+        return visitLogicalExpr(expr);
       case s.Print:
         return visitPrint(expr);
       case s.Expression:
         return visitExpressionStatment(expr);
       case s.Var:
         return visitVarStatement(expr);
+      case s.Block:
+        return visitBlock(expr);
+      case s.If:
+        return visitIfStatement(expr);
     }
   }
 
@@ -29,6 +37,18 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
     var result = evaluate(p.expr);
     print(result);
     return;
+  }
+
+  void visitBlock(s.Block b) {
+    executeBlock(b.statements, Environment(env));
+  }
+
+  void visitIfStatement(s.If i) {
+    if (evaluate(i.condition)) {
+      execute(i.branch);
+    } else if (i.elseBranch != null) {
+      execute(i.elseBranch!);
+    }
   }
 
   void visitExpressionStatment(s.Expression e) {
@@ -41,8 +61,23 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
   }
 
   dynamic visitVariableExpr(e.Variable expr) {
-    print("Evaluating variable");
     return env.value(expr.name);
+  }
+
+  dynamic visitAssignExpr(e.Assign expr) {
+    var value = evaluate(expr.value);
+    env.assign(expr.name, value);
+    return value;
+  }
+
+  dynamic visitLogicalExpr(e.Logical expr) {
+    var left = evaluate(expr.left);
+    if (expr.op.type == TokenType.or) {
+       if (isTruthy(left)) return left;
+    } else {
+      if (!isTruthy(left)) return left;
+    }
+    return evaluate(expr.right);
   }
 
   dynamic visitUnary(e.Unary expr) {
@@ -63,7 +98,6 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
   dynamic visitBinary(e.Binary expr) {
     var left = evaluate(expr.left);
     var right = evaluate(expr.right);
-    print("visiting binary: $left ${expr.op.type} $right");
 
     switch (expr.op.type) {
       case TokenType.minus:
@@ -82,8 +116,12 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
         return left > right;
       case TokenType.greaterEqual:
         return left >= right;
+      case TokenType.bangEqual:
+        return left != right;
+      case TokenType.equalEqual:
+        return left == right;
       default:
-        throw Exception('Unknown binary op ${expr.op}');
+        throw Exception('Unknown binary op ${expr.op.type}');
     }
   }
 
@@ -105,12 +143,28 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
     stmt.accept(this);
   }
 
+  void executeBlock(List<s.Stmt> statements, Environment environment) {
+    Environment previous = env;
+
+    try {
+      env = environment;
+
+      for (var statement in statements) {
+        execute(statement);
+      }
+    } finally {
+      env = previous;
+    }
+  }
+
   interpret(List<s.Stmt> stmts) {
     try {
       for (var stmt in stmts) {
         execute(stmt);
       }
-    } catch (e) {
+    } catch (e, stacktrace) {
+      print("Error in interpreter: ${e.runtimeType}");
+      print(stacktrace);
       print(e);
     }
   }

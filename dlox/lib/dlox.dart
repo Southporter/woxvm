@@ -88,14 +88,14 @@ Future<List<Token>> tokenize(Stream<String> input) async {
             while (!isEof(++end, line) && line[end] != '\n') {}
             var content = line.substring(current, end);
 
-            tokens.add(Token(TokenType.comment, content, content, lineNum));
+            // tokens.add(Token(TokenType.comment, content, content, lineNum));
             current = end;
           } else if (line[current + 1] == '#') {
             print('Found multiline string');
             var end = current + 2;
             while (!(line[end-1] == '#' && line[end] == '/')) { end++; }
             var content = line.substring(current, end);
-            tokens.add(Token(TokenType.comment, content, content, lineNum));
+            // tokens.add(Token(TokenType.comment, content, content, lineNum));
             current = end;
           } else {
             tokens.add(Token(TokenType.slash, "/", char, lineNum));
@@ -142,7 +142,17 @@ Future<List<Token>> tokenize(Stream<String> input) async {
             while (!isEof(end, line) && (isAlpha(line[end]) || isDigit(line[end]))) { end++; }
             var content = line.substring(current, end);
             var type = keywords[content] ?? TokenType.identifier;
-            tokens.add(Token(type, content, content, lineNum));
+            switch (type) {
+              case TokenType.trueType:
+                tokens.add(Token(type, content, true, lineNum));
+                break;
+              case TokenType.falseType:
+                tokens.add(Token(type, content, false, lineNum));
+                break;
+              default:
+                tokens.add(Token(type, content, content, lineNum));
+                break;
+            }
             current = end - 1;
           } else {
             print("Unknown start of token: $char, $current, $lineNum");

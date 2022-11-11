@@ -9,7 +9,24 @@ var s = "String";
 1 == 1;
 1 < 2;
 2 > 1;
-func test() {
-  print("test");
-  return 1;
+
+if true print "true";
+
+if false print "true";
+else print "false";
+
+var a = 2;
+var b = 3;
+
+if  b < 3 {
+  print "here";
+} else if a >= 2 {
+  print "in here";
+} else {
+  print "unreachable";
 }
+
+// func test() {
+//  print("test");
+//  return 1;
+// }

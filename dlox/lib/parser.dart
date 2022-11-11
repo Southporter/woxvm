@@ -26,6 +26,7 @@ class Parser {
       }
       return statement();
     } catch (e) {
+      print("Error getting declaration: $e");
       synchronize();
       return null;
     }
@@ -42,16 +43,61 @@ class Parser {
   }
 
   Stmt statement() {
-    if (match([TokenType.print])) {
-      return printStatement();
+    switch (tokens[index].type) {
+      case TokenType.leftBrace:
+        return blockStatement();
+      case TokenType.print:
+        return printStatement();
+      case TokenType.ifType:
+        return ifStatement();
+      default:
+        return expressionStatement();
     }
-    return expressionStatement();
   }
 
   Stmt printStatement() {
+    consume(TokenType.print, "Error: Print statement did not start with `print`");
     Expr expr = expression();
     consume(TokenType.semicolon, "No semicolon after print statement");
     return Print(expr);
+  }
+
+  Stmt blockStatement() {
+    print("Parsing block statement");
+    consume(TokenType.leftBrace, "Block didn't start correctly");
+    return Block(block());
+  }
+
+  Stmt ifStatement() {
+    consume(TokenType.ifType, "If statement did not start with `if`");
+    var condition = expression();
+    var branch = statement();
+
+    Stmt? elseBranch;
+    if (match([TokenType.elseType])) {
+      elseBranch = statement();
+    }
+
+    return If(condition, branch, elseBranch);
+  }
+
+  List<Stmt> block() {
+    List<Stmt> statements = [];
+
+    while (!isEof() && !check(TokenType.rightBrace)) {
+      var decl = declaration();
+      if (decl != null) {
+        statements.add(decl);
+      }
+    }
+
+    consume(TokenType.rightBrace, "Unclosed block.");
+    return statements;
+  }
+
+
+  bool isEof() {
+    return tokens[index].type == TokenType.eof;
   }
 
   Stmt expressionStatement() {
@@ -61,7 +107,47 @@ class Parser {
   }
 
   Expr expression() {
-    return equality();
+    return assignment();
+  }
+
+  Expr assignment() {
+    Expr lhs = or();
+    if (match([TokenType.equal])) {
+      var equals = previous();
+      Expr rhs = assignment();
+
+      if (lhs is Variable) {
+        var name = lhs.name;
+        return Assign(name, rhs);
+      }
+
+      throw Exception("Invalid assignment target. $equals");
+    }
+    return lhs;
+  }
+
+  Expr or() {
+    Expr lhs = and();
+
+    while (match([TokenType.or])) {
+      Token op = previous();
+      Expr rhs = and();
+      lhs = Logical(lhs, op, rhs);
+    }
+
+    return lhs;
+  }
+
+  Expr and() {
+    Expr lhs = equality();
+
+    while (match([TokenType.and])) {
+      Token op = previous();
+      var rhs = equality();
+      lhs = Logical(lhs, op, rhs);
+    }
+
+    return lhs;
   }
 
   Expr equality() {
