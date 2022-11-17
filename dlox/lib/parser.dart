@@ -1,10 +1,12 @@
 import 'package:dlox/token.dart';
 import 'package:dlox/expressions.dart';
 import 'package:dlox/statements.dart';
+import 'package:dlox/exceptions.dart';
 
 class Parser {
   final List<Token> tokens;
   var index = 0;
+  List<Error> errors = [];
 
   Parser(this.tokens);
 
@@ -16,23 +18,37 @@ class Parser {
         stmts.add(decl);
       }
     }
-    return stmts;
+    if (errors.isEmpty) {
+      return stmts;
+    } else {
+      for (var e in errors) {
+        print("Errors: $e!!!\n ${e.stackTrace}");
+      }
+      print("Found ${errors.length} errors");
+      throw Exception("Found errors during parsing");
+    }
   }
 
   Stmt? declaration() {
     try {
-      if (match([TokenType.varType])) {
-        return varDeclaration();
+      switch (tokens[index].type) {
+        case TokenType.varType:
+          return varDeclaration();
+        case TokenType.func:
+          return funcDeclaration("function");
+        default:
+          return statement();
       }
-      return statement();
-    } catch (e) {
-      print("Error getting declaration: $e");
+    } on Error catch (e) {
+      print("Error getting declaration: $e. ${e.runtimeType}");
+      errors.add(e);
       synchronize();
       return null;
     }
   }
 
   Stmt varDeclaration() {
+    consume(TokenType.varType, "Var declaration does not start with 'var'.");
     var name = consume(TokenType.identifier, "Expected variable name after `var` keyword");
     Expr? initializer;
     if (match([TokenType.equal])) {
@@ -42,14 +58,45 @@ class Parser {
     return Var(name, initializer);
   }
 
+  Stmt funcDeclaration(String kind) {
+    consume(TokenType.func, "Func declaration does not start with 'func'.");
+    var name = consume(TokenType.identifier, "Expected $kind name after `func` keyword");
+    consume(TokenType.leftParen, "Expected '(' after $kind name");
+    List<Token> params = [];
+    if (!check(TokenType.rightParen)) {
+      do {
+        if (params.length > 255) {
+          throw Exception("Can't have more than 255 parameters to a function");
+        }
+
+        params.add(consume(TokenType.identifier, "Expected parameter name"));
+      } while (match([TokenType.comma]));
+    }
+
+    consume(TokenType.rightParen, "Expected ')' after $kind parameter list");
+
+
+    consume(TokenType.leftBrace, "Expected '{' to start a function body");
+    var body = block();
+    return Func(name, params, body);
+  }
+
   Stmt statement() {
-    switch (tokens[index].type) {
+    var token = tokens[index];
+    switch (token.type) {
       case TokenType.leftBrace:
+        advance();
         return blockStatement();
       case TokenType.print:
         return printStatement();
       case TokenType.ifType:
         return ifStatement();
+      case TokenType.whileType:
+        return whileStatement();
+      case TokenType.forType:
+        return forStatement();
+      case TokenType.returnType:
+        return returnStatement();
       default:
         return expressionStatement();
     }
@@ -63,8 +110,6 @@ class Parser {
   }
 
   Stmt blockStatement() {
-    print("Parsing block statement");
-    consume(TokenType.leftBrace, "Block didn't start correctly");
     return Block(block());
   }
 
@@ -79,6 +124,66 @@ class Parser {
     }
 
     return If(condition, branch, elseBranch);
+  }
+
+  Stmt whileStatement() {
+    consume(TokenType.whileType, "While statement did not start with `while`");
+    var condition = expression();
+    var body = statement();
+
+    return While(condition, body);
+  }
+
+  Stmt forStatement() {
+    consume(TokenType.forType, "For statement did not start with `for`");
+    consume(TokenType.leftParen, "Expected '(' after 'for'.");
+
+    Stmt? initializer;
+    if (!match([TokenType.semicolon])) {
+      if (check(TokenType.varType)) {
+        initializer = varDeclaration();
+      } else {
+        initializer = expressionStatement();
+      }
+    }
+
+    Expr condition = Literal(true);
+    if (!check(TokenType.semicolon)) {
+      condition = expression();
+    }
+
+    consume(TokenType.semicolon, "Expected ';' after condition in for loop.");
+
+    Expr? increment;
+    if (!check(TokenType.rightParen)) {
+      increment = expression();
+    }
+    consume(TokenType.rightParen, "Expected ')' after clauses in for loop.");
+
+    Stmt body = statement();
+
+    if (increment != null) {
+      body = Block([body, Expression(increment)]);
+    }
+
+    body = While(condition, body);
+
+    if (initializer != null) {
+      body = Block([initializer, body]);
+    }
+
+    return body;
+  }
+
+  Stmt returnStatement() {
+    var keyword = consume(TokenType.returnType, "Return statement does not use keword return");
+    print("Return: ${keyword.type}, ${tokens[index].type}");
+    Expr? value;
+    if (!check(TokenType.semicolon)) {
+      value = expression();
+    }
+    consume(TokenType.semicolon, "Expected semicolon after return statement");
+    return Return(keyword, value);
   }
 
   List<Stmt> block() {
@@ -107,7 +212,8 @@ class Parser {
   }
 
   Expr expression() {
-    return assignment();
+    Expr expr = assignment();
+    return expr;
   }
 
   Expr assignment() {
@@ -121,7 +227,7 @@ class Parser {
         return Assign(name, rhs);
       }
 
-      throw Exception("Invalid assignment target. $equals");
+      throw RuntimeException("Invalid assignment target.", equals);
     }
     return lhs;
   }
@@ -200,7 +306,36 @@ class Parser {
       Expr right = unary();
       return Unary(op, right);
     }
-    return primary();
+    return callExpr();
+  }
+
+  Expr callExpr() {
+    Expr expr = primary();
+
+    while (true) {
+      if (match([TokenType.leftParen])) {
+        expr = finishCall(expr);
+      } else {
+        break;
+      }
+    }
+
+    return expr;
+  } 
+
+  Expr finishCall(Expr callee) {
+    List<Expr> arguments = [];
+    if (!check(TokenType.rightParen)) {
+      do {
+        if (arguments.length > 255) {
+          throw Exception("Can't have more than 255 arguments to a function call");
+        }
+        arguments.add(expression());
+      } while (match([TokenType.comma]));
+    }
+    consume(TokenType.rightParen, "Expected ')' after arguments in function call.");
+
+    return Call(callee, arguments);
   }
 
   Expr primary() {
@@ -215,7 +350,7 @@ class Parser {
     if (match([TokenType.identifier])) {
       return Variable(previous());
     }
-    throw Exception('Unknown expression. Encountered token ${peek().type}');
+    throw ParseException('Unknown expression. Encountered token ${peek().type}', peek());
   }
 
   bool match(List<TokenType> types) {
@@ -246,7 +381,7 @@ class Parser {
     if (check(t)) {
       return advance();
     }
-    throw Exception('$msg. Expected $t, but got ${peek()}');
+    throw ParseException('$msg. Expected $t, but got ${peek().type}', tokens[index]);
   }
 
   final List<TokenType> boundaries = [TokenType.classType, TokenType.func, TokenType.varType, TokenType.forType, TokenType.ifType, TokenType.whileType,

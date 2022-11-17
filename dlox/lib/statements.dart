@@ -44,3 +44,25 @@ class If extends Stmt {
 
   If(this.condition, this.branch, this.elseBranch);
 }
+
+class While extends Stmt {
+  Expr condition;
+  Stmt body;
+
+  While(this.condition, this.body);
+}
+
+class Func extends Stmt {
+  Token name;
+  List<Token> params;
+  List<Stmt> body;
+
+  Func(this.name, this.params, this.body);
+}
+
+class Return extends Stmt {
+  Token keyword;
+  Expr? value;
+
+  Return(this.keyword, this.value);
+}

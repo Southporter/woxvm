@@ -50,6 +50,13 @@ class Logical extends Binary {
   Logical(super.left, super.op, super.right);
 }
 
+class Call extends Expr {
+  Expr callee;
+  List<Expr> arguments;
+
+  Call(this.callee, this.arguments);
+}
+
 abstract class Visitor<T> {
   T visit(Expr expr);
 }

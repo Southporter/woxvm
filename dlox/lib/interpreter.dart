@@ -1,10 +1,21 @@
+import 'package:dlox/exceptions.dart';
 import 'package:dlox/expressions.dart' as e;
 import 'package:dlox/statements.dart' as s;
 import 'package:dlox/token.dart';
 import 'package:dlox/env.dart';
+import 'package:dlox/callable.dart' as c;
 
 class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
+
+  Environment globals = Environment(null);
   Environment env = Environment(null);
+
+  Interpreter() {
+    env = globals;
+
+    var clock = c.Clock();
+    globals.define(clock.name, clock);
+  }
 
   @override dynamic visit(dynamic expr) {
     switch (expr.runtimeType) {
@@ -20,6 +31,8 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
         return visitAssignExpr(expr);
       case e.Logical:
         return visitLogicalExpr(expr);
+      case e.Call:
+        return visitCallExpr(expr);
       case s.Print:
         return visitPrint(expr);
       case s.Expression:
@@ -30,6 +43,12 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
         return visitBlock(expr);
       case s.If:
         return visitIfStatement(expr);
+      case s.While:
+        return visitWhileStatement(expr);
+      case s.Func:
+        return visitFuncStatement(expr);
+      case s.Return:
+        return visitReturnStatement(expr);
     }
   }
 
@@ -49,6 +68,25 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
     } else if (i.elseBranch != null) {
       execute(i.elseBranch!);
     }
+  }
+
+  void visitWhileStatement(s.While w) {
+    while (isTruthy(evaluate(w.condition))) {
+      execute(w.body);
+    }
+  }
+
+  void visitFuncStatement(s.Func f) {
+    env.define(f.name, c.Func(f));
+  }
+
+  void visitReturnStatement(s.Return r) {
+    dynamic value;
+    if (r.value != null) {
+      value = evaluate(r.value!);
+    }
+
+    throw ReturnException(value);
   }
 
   void visitExpressionStatment(s.Expression e) {
@@ -80,6 +118,19 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
     return evaluate(expr.right);
   }
 
+  dynamic visitCallExpr(e.Call expr) {
+    var callee = evaluate(expr.callee);
+    var args = expr.arguments.map((arg) => evaluate(arg)).toList();
+    if (callee is c.Callable) {
+      if (args.length != callee.arity()) {
+        throw Exception("Callee provided ${args.length} arguments, but expects ${callee.arity()}");
+      }
+      return callee.invoke(this, args);
+    } else {
+      throw Exception("Callee is not a function");
+    }
+  }
+
   dynamic visitUnary(e.Unary expr) {
     var right = evaluate(expr.right);
 
@@ -101,7 +152,7 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
 
     switch (expr.op.type) {
       case TokenType.minus:
-        return left - right;
+        return subtract(left, right);
       case TokenType.plus:
         return left + right;
       case TokenType.star:
@@ -123,6 +174,13 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
       default:
         throw Exception('Unknown binary op ${expr.op.type}');
     }
+  }
+
+  dynamic subtract(dynamic left, dynamic right) {
+    if (left is DateTime && right is DateTime) {
+      return left.difference(right);
+    }
+    return left - right;
   }
 
   bool isTruthy(dynamic t) {

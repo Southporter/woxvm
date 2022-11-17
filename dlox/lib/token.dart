@@ -27,4 +27,9 @@ class Token {
   final int line;
 
   Token(this.type, this.lexeme, this.literal, this.line);
+
+  @override
+  String toString() {
+    return "Token($type, $lexeme, $line)";
+  }
 }

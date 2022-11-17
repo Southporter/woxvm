@@ -3,3 +3,12 @@ var a = 1;
   var a = a + 2;
   print a;
 }
+
+func c(n) {
+  if n > 0 {
+    return 1;
+  }
+  return 0;
+}
+
+c(10);

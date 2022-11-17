@@ -11,9 +11,9 @@ const String usage = 'dlox - A learning implementation of the Lox language'
 var interpreter = Interpreter();
 
 void handleTokens(List<Token> tokens) {
-  print('I have ${tokens.length} tokens.');
   var parser = Parser(tokens);
   var expr = parser.parse();
+  print(expr);
   interpreter.interpret(expr);
 }
 
