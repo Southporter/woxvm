@@ -25,8 +25,9 @@ class Clock extends Callable {
 
 class Func extends Callable {
   stmt.Func declaration;
+  Environment closure;
 
-  Func(this.declaration);
+  Func(this.declaration, this.closure);
 
   @override
   int arity() {
@@ -35,11 +36,12 @@ class Func extends Callable {
 
   @override
   dynamic invoke(Interpreter interpreter, List<dynamic> arguments) {
-    var env = Environment(interpreter.globals);
+    var env = Environment(closure);
     var params = declaration.params;
     for (var i = 0; i < params.length; i++) {
       env.define(params[i], arguments[i]);
     }
+    print(env);
     try {
       interpreter.executeBlock(declaration.body, env);
     } on ReturnException catch(e) {

@@ -25,4 +25,13 @@ class Environment {
 
     world[name.lexeme] = value;
   }
+
+  @override
+  String toString() {
+    var w = world.toString();
+    if (enclosing != null) {
+      w += " >> ${enclosing.toString()}";
+    }
+    return w;
+  }
 }

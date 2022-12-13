@@ -77,7 +77,7 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
   }
 
   void visitFuncStatement(s.Func f) {
-    env.define(f.name, c.Func(f));
+    env.define(f.name, c.Func(f, env));
   }
 
   void visitReturnStatement(s.Return r) {
@@ -99,6 +99,8 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
   }
 
   dynamic visitVariableExpr(e.Variable expr) {
+    print(env);
+    print("Value: ${env.value(expr.name)} ${expr.name}");
     return env.value(expr.name);
   }
 
@@ -147,8 +149,11 @@ class Interpreter extends e.Visitor<dynamic> implements s.Visitor<void> {
   }
 
   dynamic visitBinary(e.Binary expr) {
+    print("Binary: ${expr.op} ${expr.left} ${expr.right}");
     var left = evaluate(expr.left);
     var right = evaluate(expr.right);
+
+    print("After eval: $left $right");
 
     switch (expr.op.type) {
       case TokenType.minus:

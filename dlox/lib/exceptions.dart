@@ -18,8 +18,14 @@ class RuntimeException extends Error implements Exception {
   RuntimeException(this.message, this.token);
 }
 
-class ReturnException extends Error implements Exception {
+class ReturnException implements Exception {
   dynamic value;
 
   ReturnException(this.value);
+}
+
+class ResolveException implements Exception {
+  Token name;
+  String message;
+  ResolveException(this.name, this.message);
 }
