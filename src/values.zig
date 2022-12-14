@@ -56,6 +56,6 @@ test "growCapacity" {
     try expectEqual(growCapacity(7), 8);
     try expectEqual(growCapacity(8), 16);
     try expectEqual(growCapacity(15), 30);
-    try expectEqual(growCapacity(224), 256);
-    try expectEqual(growCapacity(256), 256);
+    try expectEqual(growCapacity(224), 255);
+    try expectEqual(growCapacity(255), 255);
 }

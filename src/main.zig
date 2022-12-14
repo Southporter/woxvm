@@ -1,6 +1,6 @@
 const std = @import("std");
 const code = @import("./opcode.zig");
-const newChunk = @import("./chunk.zig").newChunk;
+const Chunk = @import("./chunk.zig").Chunk;
 const disassembler = @import("./disassemble.zig");
 const vals = @import("./values.zig");
 const LineInfo = @import("./lineInfo.zig").LineInfo;
@@ -12,15 +12,17 @@ pub fn main() anyerror!void {
 
     const gpa = alloc.allocator();
 
-    const vm = try newVm(&gpa);
-    defer vm.free();
+    var vm = try newVm(&gpa);
+    // defer vm.free();
 
-    var chunk = try newChunk(&gpa);
+    var chunk = try Chunk.new(&gpa);
     defer chunk.free();
 
     const constIndex = try chunk.addConstant(vals.Value{ .int = 13 });
+    std.debug.print("Const Index: {d}\n", .{ .index = constIndex });
     const line = &LineInfo{ .line = 0, .column = 0 };
     const f64ConstIndex = try chunk.addConstant(vals.Value{ .double = 4 / 3 });
+    std.debug.print("Const Float Index: {d}\n", .{ .index = f64ConstIndex });
     try chunk.write(@enumToInt(code.OpCode.i32Const), line);
     try chunk.write(constIndex, line);
 
@@ -31,7 +33,7 @@ pub fn main() anyerror!void {
 
     disassembler.disassemble(&chunk, "test chunk");
 
-    vm.interpret(&chunk);
+    try vm.interpret(&chunk);
 }
 
 test "basic test" {

@@ -26,13 +26,11 @@ fn disassembleInstruction(chunk: *Chunk, offset: u32) u32 {
     var instruction = chunk.code[offset];
 
     return switch (@intToEnum(OpCode, instruction)) {
-        OpCode.unreach => simpleInstruction("UNREACHABLE", offset),
-        OpCode.nop => simpleInstruction("NOP", offset),
-        OpCode.ret => simpleInstruction("RETURN", offset),
         OpCode.i32Const => constInstruction("OP_I32_CONST", chunk, offset),
         OpCode.i64Const => constInstruction("OP_I64_CONST", chunk, offset),
         OpCode.f32Const => constInstruction("OP_F32_CONST", chunk, offset),
         OpCode.f64Const => constInstruction("OP_F64_CONST", chunk, offset),
+        else => simpleInstruction(@tagName(@intToEnum(OpCode, instruction)), offset),
     };
 }
 

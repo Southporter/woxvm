@@ -10,6 +10,18 @@ pub const Chunk = struct {
     constants: vals.ValueArray,
     allocator: *const std.mem.Allocator,
 
+    pub fn new(allocator: *const std.mem.Allocator) std.mem.Allocator.Error!Chunk {
+        var constants = try vals.newValueArray(allocator);
+        var chunk = Chunk{
+            .capacity = 8,
+            .code = try allocator.alloc(u8, 8),
+            .lineInfo = try allocator.alloc(*const LineInfo, 8),
+            .constants = constants,
+            .allocator = allocator,
+        };
+        return chunk;
+    }
+
     pub fn free(self: *Chunk) void {
         self.allocator.free(self.*.code);
         self.allocator.free(self.lineInfo);
@@ -32,18 +44,6 @@ pub const Chunk = struct {
         return try self.constants.write(value);
     }
 };
-
-pub fn newChunk(allocator: *const std.mem.Allocator) std.mem.Allocator.Error!Chunk {
-    var constants = try vals.newValueArray(allocator);
-    var chunk = Chunk{
-        .capacity = 8,
-        .code = try allocator.alloc(u8, 8),
-        .lineInfo = try allocator.alloc(*const LineInfo, 8),
-        .constants = constants,
-        .allocator = allocator,
-    };
-    return chunk;
-}
 
 fn growCapacity(capacity: u32) u32 {
     if (capacity < 8) {
@@ -70,7 +70,7 @@ test "growCapacity" {
 
 test "newChunk" {
     const allocator = std.testing.allocator;
-    var chunk = try newChunk(&allocator);
+    var chunk = try Chunk.new(&allocator);
     defer chunk.free();
 
     try expectEqual(chunk.count, 0);
@@ -81,18 +81,19 @@ test "newChunk" {
 
 test "opcode_grow" {
     const allocator = std.testing.allocator;
-    var chunk = try newChunk(&allocator);
+    var chunk = try Chunk.new(&allocator);
     defer chunk.free();
+    const line = &LineInfo{ .line = 10, .column = 11 };
 
-    try chunk.write(0);
-    try chunk.write(1);
-    try chunk.write(2);
-    try chunk.write(3);
-    try chunk.write(4);
-    try chunk.write(5);
-    try chunk.write(6);
-    try chunk.write(7);
-    try chunk.write(8);
+    try chunk.write(0, line);
+    try chunk.write(1, line);
+    try chunk.write(2, line);
+    try chunk.write(3, line);
+    try chunk.write(4, line);
+    try chunk.write(5, line);
+    try chunk.write(6, line);
+    try chunk.write(7, line);
+    try chunk.write(8, line);
 
     try expectEqual(chunk.capacity, 16);
     try expectEqual(chunk.code.len, 16);
