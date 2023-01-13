@@ -1,6 +1,14 @@
 const std = @import("std");
 
-pub const Value = union(enum) {
+pub const ValueTag = enum {
+    int,
+    long,
+    float,
+    double,
+    boolean,
+};
+
+pub const Value = union(ValueTag) {
     int: i32,
     long: i64,
     float: f32,

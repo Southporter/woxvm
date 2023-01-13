@@ -1,75 +1,189 @@
 const std = @import("std");
 const Chunk = @import("./chunk.zig").Chunk;
 const OpCode = @import("./opcode.zig").OpCode;
+const Value = @import("./values.zig").Value;
+const ValueTag = @import("./values.zig").ValueTag;
+const disassembleInstruction = @import("./disassemble.zig").disassembleInstruction;
+const Compiler = @import("./compiler.zig").Compiler;
+const newCompiler = @import("./compiler.zig").new;
 
-const InterpretError = error{
+pub const InterpretError = error{
     CompileError,
     RuntimeError,
+    StackOverflow,
+    StackUnderflow,
 };
+
+const logger = std.log.scoped(.vm);
+
+const STACK_MAX = std.math.maxInt(u8);
 
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
+    compiler: Compiler,
     ip: u32,
-    chunk: ?*Chunk,
+    chunk: *Chunk,
+    stack: [STACK_MAX]Value = .{Value{ .int = 0 }} ** STACK_MAX,
+    top: u8 = 0,
 
     // pub fn free(self: *Vm) void {
     // }
 
-    pub fn interpret(self: *Vm, chunk: *Chunk) InterpretError!void {
-        self.chunk = chunk;
+    pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
+        self.compiler = newCompiler(self.allocator, source);
+        self.chunk = &(try self.compiler.compile());
         self.ip = 0;
+        self.top = 0;
         try self.run();
     }
+
+    fn printStack(self: *Vm) void {
+        if (std.log.level != .debug) {
+            return;
+        }
+        const print = std.debug.print;
+        print("        ", .{});
+        var i: u8 = 0;
+        while (i < self.top) : (i += 1) {
+            print("[ {any} ]", .{ .val = self.stack[i] });
+        }
+        print("\n", .{});
+    }
+
     fn run(self: *Vm) InterpretError!void {
         var instruction = self.advance();
-        std.debug.print("Current instruction: {s} {x}\n", .{ .name = @tagName(@intToEnum(OpCode, instruction)), .instruct = instruction });
-        std.debug.print("Next: {x}\n", .{ .next = self.chunk.?.code[self.ip] });
+        logger.debug("Current instruction: {s} {x}\n", .{ .name = @tagName(@intToEnum(OpCode, instruction)), .instruct = instruction });
+        logger.debug("Next: {x}\n", .{ .next = self.chunk.code[self.ip] });
         while (true) : (instruction = self.advance()) {
-            switch (@intToEnum(OpCode, instruction)) {
-                OpCode.ret => return,
-                OpCode.i32Const => {
-                    const value = self.getConstant(i32);
-                    std.debug.print("Got i32 const: {d}\n", .{ .int = value });
+            self.printStack();
+            _ = disassembleInstruction(self.chunk, self.ip - 1);
+            const opcode = @intToEnum(OpCode, instruction);
+            switch (opcode) {
+                OpCode.@"return" => {
+                    logger.debug("Return value: {any}", .{ .top = self.pop() });
+                    return;
                 },
-                OpCode.i64Const => {
-                    const value = self.getConstant(i64);
-                    std.debug.print("Got i64 const: {d}\n", .{ .long = value });
+                OpCode.i32_const, OpCode.i64_const, OpCode.f32_const, OpCode.f64_const => {
+                    const value = self.getConstant();
+                    if (std.meta.activeTag(value) != switch (opcode) {
+                        OpCode.i32_const => ValueTag.int,
+                        OpCode.i64_const => ValueTag.long,
+                        OpCode.f32_const => ValueTag.float,
+                        OpCode.f64_const => ValueTag.double,
+                        else => unreachable,
+                    }) {
+                        return InterpretError.RuntimeError;
+                    }
+                    try self.push(value);
                 },
-                OpCode.f32Const => {
-                    const value = self.getConstant(f32);
-                    std.debug.print("Got f32 const: {e}\n", .{ .float = value });
+                OpCode.i32_mul => {
+                    const multiplier = try self.pop();
+                    self.stack[self.top - 1].int *= multiplier.int;
                 },
-                OpCode.f64Const => {
-                    const value = self.getConstant(f64);
-                    std.debug.print("Got f64 const: {e}\n", .{ .double = value });
+                OpCode.i32_add => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].int += value.int;
+                },
+                OpCode.i32_sub => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].int -= value.int;
+                },
+                OpCode.i64_mul => {
+                    const multiplier = try self.pop();
+                    self.stack[self.top - 1].long *= multiplier.long;
+                },
+                OpCode.i64_add => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].long += value.long;
+                },
+                OpCode.i64_sub => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].long -= value.long;
+                },
+                OpCode.f32_mul => {
+                    const multiplier = try self.pop();
+                    self.stack[self.top - 1].float *= multiplier.float;
+                },
+                OpCode.f32_div => {
+                    const divisor = try self.pop();
+                    self.stack[self.top - 1].float /= divisor.float;
+                },
+                OpCode.f32_add => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].float += value.float;
+                },
+                OpCode.f32_sub => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].float -= value.float;
+                },
+                OpCode.f64_mul => {
+                    const multiplier = try self.pop();
+                    self.stack[self.top - 1].double *= multiplier.double;
+                },
+                OpCode.f64_div => {
+                    const divisor = try self.pop();
+                    self.stack[self.top - 1].double /= divisor.double;
+                },
+                OpCode.f64_add => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].double += value.double;
+                },
+                OpCode.f64_sub => {
+                    const value = try self.pop();
+                    self.stack[self.top - 1].double -= value.double;
+                },
+                OpCode.f32_neg => {
+                    self.stack[self.top - 1].float *= -1;
+                },
+                OpCode.f64_neg => {
+                    self.stack[self.top - 1].double *= -1;
                 },
                 else => unreachable,
             }
         }
     }
 
-    fn getConstant(self: *Vm, comptime T: type) T {
+    fn getConstantRaw(self: *Vm, comptime tag: ValueTag) std.meta.TagPayload(Value, tag) {
         const index = self.advance();
-        var value = self.chunk.?.constants.values[index];
-        return switch (T) {
-            i32 => value.int,
-            i64 => value.long,
-            f32 => value.float,
-            f64 => value.double,
-            bool => value.boolean,
-            else => unreachable,
-        };
+        var value = self.chunk.constants.values[index];
+        return @field(value, @tagName(tag));
+    }
+    fn getConstant(self: *Vm) Value {
+        const index = self.advance();
+        var value = self.chunk.constants.values[index];
+        return value;
     }
 
     fn advance(self: *Vm) u8 {
-        var instruction = self.chunk.?.code[self.ip];
+        var instruction = self.chunk.code[self.ip];
         self.ip += 1;
         return instruction;
+    }
+
+    fn push(self: *Vm, val: Value) InterpretError!void {
+        if (self.top >= STACK_MAX) {
+            return InterpretError.StackOverflow;
+        }
+        self.stack[self.top] = val;
+        self.top += 1;
+    }
+
+    fn pop(self: *Vm) InterpretError!Value {
+        if (self.top == 0) {
+            return InterpretError.StackUnderflow;
+        }
+        self.top -= 1;
+        return self.stack[self.top];
     }
 };
 
 pub fn newVm(allocator: *const std.mem.Allocator) !Vm {
-    return Vm{ .allocator = allocator, .ip = 0, .chunk = null };
+    return Vm{
+        .allocator = allocator,
+        .ip = 0,
+        .chunk = undefined,
+        .compiler = undefined,
+    };
 }
 
 test "VM.advance" {
@@ -94,4 +208,35 @@ test "VM.advance" {
     try equal(vm.advance(), 12);
     try equal(vm.ip, 3);
     try equal(vm.advance(), 13);
+}
+
+test "VM.stackOverflow" {
+    const equal = std.testing.expectEqual;
+    var vm = try newVm(&std.testing.allocator);
+    try equal(vm.top, 0);
+    try vm.push(Value{ .int = 1 });
+    try equal(vm.top, 1);
+    vm.top = STACK_MAX - 1;
+    try vm.push(Value{ .long = 254 });
+    try equal(vm.top, STACK_MAX);
+    vm.push(Value{ .boolean = STACK_MAX }) catch |err| {
+        try std.testing.expectEqual(err, InterpretError.StackOverflow);
+        return;
+    };
+    try equal(vm.top, STACK_MAX);
+}
+
+test "VM.stackUnderflow" {
+    const equal = std.testing.expectEqual;
+    var vm = try newVm(&std.testing.allocator);
+    try equal(vm.top, 0);
+    try vm.push(Value{ .int = 1 });
+    try equal(vm.top, 1);
+    _ = try vm.pop();
+    try equal(vm.top, 0);
+    _ = vm.pop() catch |err| {
+        try equal(err, InterpretError.StackUnderflow);
+        return;
+    };
+    try equal(vm.top, 0);
 }
