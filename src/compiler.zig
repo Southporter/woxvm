@@ -1,6 +1,5 @@
 const std = @import("std");
-const Chunk = @import("./chunk.zig").Chunk;
-const newChunk = @import("./chunk.zig").newChunk;
+const Module = @import("./module.zig").Module;
 const t = @import("./token.zig");
 const LineInfo = @import("./lineInfo.zig").LineInfo;
 
@@ -53,13 +52,13 @@ pub const Compiler = struct {
     allocator: *const std.mem.Allocator,
     scanner: Scanner,
 
-    pub fn compile(self: *Compiler) !Chunk {
-        var chunk = try Chunk.new(self.allocator);
+    pub fn compile(self: *Compiler) !Module {
+        var module = try Module.new(self.allocator);
         while (self.scanner.next()) |tok| {
             // add tok to chunk
             std.debug.print("Token: {any}", .{ .tok = tok });
         }
-        return chunk;
+        return module;
     }
 };
 pub fn new(alloc: *const std.mem.Allocator, source: []u8) Compiler {

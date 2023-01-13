@@ -10,7 +10,7 @@ const vm = @import("./vm.zig");
 
 const Usage =
     \\Usage: wox [path]
-    \\ 
+    \\
     \\If no path is provided, starts a wox repl.
 ;
 pub fn repl(VM: *vm.Vm) !void {
@@ -48,7 +48,7 @@ pub fn main() anyerror!void {
     const gpa = alloc.allocator();
 
     var VM = try vm.newVm(&gpa);
-    // defer vm.free();
+    defer VM.free();
 
     const args = try std.process.argsAlloc(gpa);
     defer std.process.argsFree(gpa, args);
