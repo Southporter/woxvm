@@ -3,7 +3,7 @@ const module = @import("./module.zig");
 
 const FuncInst = struct {
     type: module.functype,
-    module: module.ModuleInstance,
+    module: *module.ModuleInstance,
     code: module.func,
 };
 
@@ -67,5 +67,17 @@ pub const Store = struct {
         self.globals.deinit();
         self.elems.deinit();
         self.datas.deinit();
+    }
+
+    pub fn allocFunc(self: *Store, modInst: *module.ModuleInstance, func: std.wasm.Type) !module.address {
+        var addr = self.funcs.items.len;
+        try self.funcs.append(FuncInst{
+            .functype = func,
+            .module = modInst,
+            .code = {
+                std.wasm.Opcode.end;
+            },
+        });
+        return addr;
     }
 };

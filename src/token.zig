@@ -1,7 +1,7 @@
 const LineInfo = @import("./lineInfo.zig").LineInfo;
 pub const Token = struct {
     @"type": TokenType,
-    lexem: []u8,
+    lexem: []const u8,
     line: LineInfo,
 };
 

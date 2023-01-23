@@ -1,5 +1,6 @@
 const std = @import("std");
 const Module = @import("./module.zig").Module;
+const ModuleInstance = @import("./module.zig").ModuleInstance;
 const Store = @import("./store.zig").Store;
 const OpCode = @import("./opcode.zig").OpCode;
 const Value = @import("./values.zig").Value;
@@ -22,23 +23,30 @@ const STACK_MAX = std.math.maxInt(u8);
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
     compiler: Compiler,
-    module: *const Module,
-    store: *const Store,
+    module: *ModuleInstance,
+    store: Store,
     stack: [STACK_MAX]Value = .{Value{ .int = 0 }} ** STACK_MAX,
     top: u8 = 0,
 
     pub fn free(self: *Vm) void {
-        self.module.*.free();
-        self.store.*.free();
+        self.module.free();
+        self.store.free();
     }
 
     pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
         self.compiler = newCompiler(self.allocator, source);
-        var module = try self.compiler.compile();
-        defer module.free();
-        self.module = &module;
-        self.top = 0;
-        try self.run();
+        if (self.compiler.compile()) |*module| {
+            defer module.free();
+            var instance = try module.init(&self.store);
+            self.module = &instance;
+            self.top = 0;
+            try self.run();
+        } else |err| switch (err) {
+            error.UnexpectedCharacter => {
+                const lineInfo = self.compiler.getLineInfo();
+                logger.debug("Unexpected error: ({d}, {d})", lineInfo);
+            },
+        }
     }
 
     fn printStack(self: *Vm) void {
@@ -54,9 +62,7 @@ pub const Vm = struct {
         print("\n", .{});
     }
 
-    fn run(
-        //self: *Vm
-    ) InterpretError!void {
+    fn run(_: *Vm) InterpretError!void {
         // var instruction = self.advance();
         // logger.debug("Current instruction: {s} {x}\n", .{ .name = @tagName(@intToEnum(OpCode, instruction)), .instruct = instruction });
         // logger.debug("Next: {x}\n", .{ .next = self.chunk.code[self.ip] });
@@ -186,9 +192,9 @@ pub const Vm = struct {
 pub fn newVm(allocator: *const std.mem.Allocator) !Vm {
     return Vm{
         .allocator = allocator,
-        .module = &Module.new(allocator),
         .compiler = undefined,
-        .store = &Store.new(allocator),
+        .module = undefined,
+        .store = Store.new(allocator),
     };
 }
 

@@ -1,5 +1,6 @@
 const std = @import("std");
 const Value = @import("./values.zig").Value;
+const Store = @import("./store.zig").Store;
 
 pub const valtype = union {
     value: std.wasm.Valtype,
@@ -62,7 +63,7 @@ pub const Module = struct {
         };
     }
 
-    pub fn free(self: *Module) void {
+    pub fn free(self: *const Module) void {
         self.types.deinit();
         self.funcs.deinit();
         self.tables.deinit();
@@ -73,13 +74,20 @@ pub const Module = struct {
         self.imports.deinit();
         self.exports.deinit();
     }
+
+    pub fn init(self: *const Module, _: *Store) !ModuleInstance {
+        var instance = ModuleInstance.new(self.allocator);
+        // for (self.funcs) |f| {
+        //     var addr = store.allocFunc(&instance, f);
+        //     try instance.funcs.append(addr);
+        // }
+        return instance;
+    }
 };
 
 pub const address = u32;
 
 pub const ModuleInstance = struct {
-    allocator: *const std.mem.Allocator,
-
     types: std.ArrayList(std.wasm.Type),
     funcs: std.ArrayList(address),
     tables: std.ArrayList(address),
@@ -88,4 +96,28 @@ pub const ModuleInstance = struct {
     elems: std.ArrayList(address),
     datas: std.ArrayList(address),
     exports: std.ArrayList(address),
+
+    pub fn new(alloc: *const std.mem.Allocator) ModuleInstance {
+        return ModuleInstance{
+            .types = std.ArrayList(std.wasm.Type).init(alloc.*),
+            .funcs = std.ArrayList(address).init(alloc.*),
+            .tables = std.ArrayList(address).init(alloc.*),
+            .mems = std.ArrayList(address).init(alloc.*),
+            .globals = std.ArrayList(address).init(alloc.*),
+            .elems = std.ArrayList(address).init(alloc.*),
+            .datas = std.ArrayList(address).init(alloc.*),
+            .exports = std.ArrayList(address).init(alloc.*),
+        };
+    }
+
+    pub fn free(self: *ModuleInstance) void {
+        self.types.deinit();
+        self.funcs.deinit();
+        self.tables.deinit();
+        self.mems.deinit();
+        self.globals.deinit();
+        self.elems.deinit();
+        self.datas.deinit();
+        self.exports.deinit();
+    }
 };
