@@ -1,8 +1,15 @@
 const LineInfo = @import("./lineInfo.zig").LineInfo;
 pub const Token = struct {
     @"type": TokenType,
-    lexem: []const u8,
+    lexeme: []const u8,
     line: LineInfo,
+
+    pub fn blank() Token {
+        return Token{ .@"type" = TokenType.@"error", .lexeme = &[_]u8{}, .line = LineInfo{
+            .line = 0,
+            .column = 0,
+        } };
+    }
 };
 
 pub const TokenType = enum(u8) {
@@ -30,7 +37,8 @@ pub const TokenType = enum(u8) {
     // literals.
     identifier,
     string,
-    number,
+    integer,
+    float,
     // keywords.
     @"and",
     class,

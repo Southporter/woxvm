@@ -34,7 +34,7 @@ pub const Vm = struct {
     }
 
     pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
-        self.compiler = newCompiler(self.allocator, source);
+        self.compiler = try newCompiler(self.allocator, source);
         if (self.compiler.compile()) |*module| {
             defer module.free();
             var instance = try module.init(&self.store);
