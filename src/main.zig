@@ -21,10 +21,9 @@ pub fn repl(VM: *vm.Vm) !void {
         unreachable;
     }
     while (true) {
-        var write_res = try out.write("> ");
-        std.debug.print("Write res: {d}\n", .{ .res = write_res });
-        _ = try in.read(&buf);
-        try VM.interpret(&buf);
+        _ = try out.write("> ");
+        var read = try in.read(&buf);
+        try VM.interpret(buf[0..read]);
     }
 }
 

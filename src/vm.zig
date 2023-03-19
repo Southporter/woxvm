@@ -1,6 +1,6 @@
 const std = @import("std");
 const Module = @import("./module.zig").Module;
-const ModuleInstance = @import("./module.zig").ModuleInstance;
+const Scanner = @import("./scanner.zig").Scanner;
 const Store = @import("./store.zig").Store;
 const OpCode = @import("./opcode.zig").OpCode;
 const Value = @import("./values.zig").Value;
@@ -10,10 +10,12 @@ const Compiler = @import("./compiler.zig").Compiler;
 const newCompiler = @import("./compiler.zig").new;
 
 pub const InterpretError = error{
+    ParseError,
     CompileError,
     RuntimeError,
     StackOverflow,
     StackUnderflow,
+    OutOfMemory,
 };
 
 const logger = std.log.scoped(.vm);
@@ -23,7 +25,7 @@ const STACK_MAX = std.math.maxInt(u8);
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
     compiler: Compiler,
-    module: *ModuleInstance,
+    module: *Module,
     store: Store,
     stack: [STACK_MAX]Value = .{Value{ .int = 0 }} ** STACK_MAX,
     top: u8 = 0,
@@ -34,18 +36,21 @@ pub const Vm = struct {
     }
 
     pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
-        self.compiler = try newCompiler(self.allocator, source);
+        var scanner = Scanner{
+            .source = source,
+            .start = 0,
+            .current = 0,
+            .line = 1,
+            .column = 0,
+        };
+        self.compiler = try newCompiler(self.allocator, &scanner);
         if (self.compiler.compile()) |*module| {
             defer module.free();
-            var instance = try module.init(&self.store);
-            self.module = &instance;
+            self.module = module;
             self.top = 0;
             try self.run();
-        } else |err| switch (err) {
-            error.UnexpectedCharacter => {
-                const lineInfo = self.compiler.getLineInfo();
-                logger.debug("Unexpected error: ({d}, {d})", lineInfo);
-            },
+        } else |err| {
+            std.debug.print("Found compile error: {any}", .{ .e = err });
         }
     }
 

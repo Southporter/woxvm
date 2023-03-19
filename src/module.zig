@@ -7,7 +7,7 @@ pub const valtype = union {
     ref: std.wasm.RefType,
 };
 
-const expr = *[:std.wasm.Opcode.end]std.wasm.Opcode;
+const expr = *[]u8;
 
 pub const functype = struct {
     args: *[]Value,

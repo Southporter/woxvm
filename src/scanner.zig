@@ -22,13 +22,16 @@ pub const Scanner = struct {
 
     pub fn next(self: *Scanner) !?t.Token {
         var nextTok = try self.scanToken();
-        return switch (nextTok.@"type") {
+        // std.debug.print("Next token: {any}\n", .{ .tok = nextTok });
+        return switch (nextTok.type) {
             t.TokenType.eof, t.TokenType.@"error" => null,
             else => nextTok,
         };
     }
     pub fn scanToken(self: *Scanner) !t.Token {
+        // std.debug.print("Scanning token... index: {d} !! {s}\n", .{ .i = self.current, .source = self.source });
         self.skipWhitespace();
+        // std.debug.print("Skipped whitespace. Index: {d}\n", .{ .i = self.current });
         self.start = self.current;
         if (self.isAtEof()) {
             return self.makeToken(t.TokenType.eof);
@@ -90,7 +93,6 @@ pub const Scanner = struct {
     }
 
     fn identifierType(self: *Scanner) t.TokenType {
-        std.debug.print("Checking identifier: {s}\n", .{ .s = self.source[self.start..self.current] });
         return switch (self.source[self.start]) {
             'a' => self.checkKeyword(1, "nd", t.TokenType.@"and"),
             'c' => self.checkKeyword(1, "lass", t.TokenType.class),
@@ -98,14 +100,14 @@ pub const Scanner = struct {
             'f' => fblk: {
                 if (self.current - self.start > 1) {
                     return switch (self.source[self.start + 1]) {
-                        'a' => self.checkKeyword(2, "lse", t.TokenType.@"false"),
+                        'a' => self.checkKeyword(2, "lse", t.TokenType.false),
                         'o' => self.checkKeyword(2, "r", t.TokenType.@"for"),
                         'u' => self.checkKeyword(2, "n", t.TokenType.fun),
 
-                        else => break :fblk,
+                        else => break :fblk t.TokenType.identifier,
                     };
                 }
-                break :fblk;
+                break :fblk t.TokenType.identifier;
             },
             'i' => self.checkKeyword(1, "f", t.TokenType.@"if"),
             'n' => self.checkKeyword(1, "il", t.TokenType.nil),
@@ -117,11 +119,11 @@ pub const Scanner = struct {
                 if (self.current - self.start > 1) {
                     return switch (self.source[self.start + 1]) {
                         'h' => self.checkKeyword(2, "is", t.TokenType.this),
-                        'r' => self.checkKeyword(2, "ue", t.TokenType.@"true"),
-                        else => break :tblk,
+                        'r' => self.checkKeyword(2, "ue", t.TokenType.true),
+                        else => break :tblk t.TokenType.identifier,
                     };
                 }
-                break :tblk;
+                break :tblk t.TokenType.identifier;
             },
             'v' => self.checkKeyword(1, "ar", t.TokenType.@"var"),
             'w' => self.checkKeyword(1, "hile", t.TokenType.@"while"),
@@ -147,12 +149,14 @@ pub const Scanner = struct {
     }
 
     fn skipWhitespace(self: *Scanner) void {
-        while (!self.isAtEof() and self.isWhiteSpace()) : (_ = self.advance()) {}
+        //@breakpoint();
+        while (!self.isAtEof() and self.isWhiteSpace()) : (_ = self.advance()) {
+            //@breakpoint();
+        }
     }
 
     fn isWhiteSpace(self: *Scanner) bool {
         const c = self.peek();
-        std.debug.print("Checking char: {c}\n", .{ .c = c });
         return switch (c) {
             ' ', '\t', '\r' => {
                 return true;
@@ -163,7 +167,6 @@ pub const Scanner = struct {
                 return true;
             },
             '/' => {
-                std.debug.print("In backslash: {d}\n", .{ .next = self.peekNext() });
                 if (self.peekNext() == '/') {
                     return true;
                 } else {
@@ -175,6 +178,8 @@ pub const Scanner = struct {
     }
 
     fn peek(self: *Scanner) u8 {
+        //@breakpoint();
+        // std.debug.print("Peeking |{c}|: {s}, {d}\n", .{ .c = self.source[self.current], .source = self.source, .i = self.current });
         return self.source[self.current];
     }
 
@@ -185,9 +190,12 @@ pub const Scanner = struct {
     }
 
     fn advance(self: *Scanner) u8 {
+        //@breakpoint();
         const c = self.source[self.current];
+        // std.debug.print("Advancing: {d}", .{ .current = self.current });
         self.current += 1;
         self.column += 1;
+        // std.debug.print("Advanced: {d}", .{ .current = self.current });
         return c;
     }
 
@@ -195,10 +203,12 @@ pub const Scanner = struct {
         if (self.isAtEof()) return false;
         if (self.source[self.current] != c) return false;
         self.current += 1;
+        self.column += 1;
         return true;
     }
 
     fn isAtEof(self: *Scanner) bool {
+        // std.debug.print("Checking end of file: {d} >= {d}\n", .{ .left = self.current, .right = self.source.len });
         return self.current >= self.source.len;
     }
 
@@ -208,8 +218,8 @@ pub const Scanner = struct {
 
     fn makeToken(self: *Scanner, tokenType: t.TokenType) t.Token {
         return t.Token{
-            .@"type" = tokenType,
-            .lexeme = self.source.ptr[self.start..self.current],
+            .type = tokenType,
+            .lexeme = self.source[self.start..self.current],
             .line = self.lineInfo(),
         };
     }
@@ -283,23 +293,23 @@ test "numbers" {
     var zero: usize = 0;
     var scanner = Scanner{ .source = source[zero..source.len] };
     const numTok = try scanner.scanToken();
-    try std.testing.expectEqual(t.TokenType.integer, numTok.@"type");
+    try std.testing.expectEqual(t.TokenType.integer, numTok.type);
 
     const floatTok = try scanner.scanToken();
-    try std.testing.expectEqual(t.TokenType.float, floatTok.@"type");
+    try std.testing.expectEqual(t.TokenType.float, floatTok.type);
     const dotTok = try scanner.scanToken();
-    try std.testing.expectEqual(t.TokenType.integer, dotTok.@"type");
+    try std.testing.expectEqual(t.TokenType.integer, dotTok.type);
     try std.testing.expect(dotTok.lexeme.len == 1);
     try std.testing.expect(std.mem.eql(u8, dotTok.lexeme, "3"));
 }
 
 test "keywords" {
-    const keywords = [_]t.TokenType{ t.TokenType.@"and", t.TokenType.class, t.TokenType.@"else", t.TokenType.@"false", t.TokenType.@"for", t.TokenType.fun, t.TokenType.@"if", t.TokenType.nil, t.TokenType.@"or", t.TokenType.print, t.TokenType.@"return", t.TokenType.super, t.TokenType.this, t.TokenType.@"true", t.TokenType.@"var", t.TokenType.@"while" };
+    const keywords = [_]t.TokenType{ t.TokenType.@"and", t.TokenType.class, t.TokenType.@"else", t.TokenType.false, t.TokenType.@"for", t.TokenType.fun, t.TokenType.@"if", t.TokenType.nil, t.TokenType.@"or", t.TokenType.print, t.TokenType.@"return", t.TokenType.super, t.TokenType.this, t.TokenType.true, t.TokenType.@"var", t.TokenType.@"while" };
 
     for (keywords) |tokType| {
         var scanner = Scanner{ .source = @tagName(tokType) };
         const tok = try scanner.scanToken();
-        try std.testing.expectEqual(tok.@"type", tokType);
+        try std.testing.expectEqual(tok.type, tokType);
     }
 }
 
@@ -309,6 +319,23 @@ test "non keywords" {
     var scanner = Scanner{ .source = source[zero..source.len] };
     var tok = try scanner.next();
     while (tok != null) : (tok = try scanner.next()) {
-        try std.testing.expectEqual(tok.?.@"type", t.TokenType.identifier);
+        try std.testing.expectEqual(tok.?.type, t.TokenType.identifier);
     }
+}
+
+test "mixed" {
+    const source = "4 + 4\n";
+    var zero: usize = 0;
+    var scanner = Scanner{ .source = source[zero..] };
+    var tok = try scanner.next();
+    try std.testing.expectEqual(tok.?.type, t.TokenType.integer);
+
+    tok = try scanner.next();
+    try std.testing.expectEqual(tok.?.type, t.TokenType.plus);
+
+    tok = try scanner.next();
+    try std.testing.expectEqual(tok.?.type, t.TokenType.integer);
+
+    tok = try scanner.next();
+    try std.testing.expectEqual(tok, null);
 }
