@@ -1,13 +1,5 @@
 const std = @import("std");
 
-pub const OpCode = std.wasm.Opcode;
+pub const OpCode = enum(u8) { @"return", int_const, float_const, negate, add, sub, mul, div };
 
-test "OpCode" {
-    const equals = std.testing.expectEqual;
-
-    try equals(@enumToInt(OpCode.call_indirect), 0x11);
-    try equals(@enumToInt(OpCode.i32_load), 0x28);
-    try equals(@enumToInt(OpCode.i32_clz), 0x67);
-    try equals(@enumToInt(OpCode.i32_wrap_i64), 0xA7);
-    try equals(@enumToInt(OpCode.f64_reinterpret_i64), 0xBF);
-}
+test "OpCode" {}

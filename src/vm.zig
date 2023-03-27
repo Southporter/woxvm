@@ -1,13 +1,11 @@
 const std = @import("std");
-const Module = @import("./module.zig").Module;
 const Scanner = @import("./scanner.zig").Scanner;
-const Store = @import("./store.zig").Store;
+const Chunk = @import("./chunk.zig").Chunk;
 const OpCode = @import("./opcode.zig").OpCode;
 const Value = @import("./values.zig").Value;
 const ValueTag = @import("./values.zig").ValueTag;
 const disassembleInstruction = @import("./disassemble.zig").disassembleInstruction;
 const Compiler = @import("./compiler.zig").Compiler;
-const newCompiler = @import("./compiler.zig").new;
 
 pub const InterpretError = error{
     ParseError,
@@ -24,15 +22,14 @@ const STACK_MAX = std.math.maxInt(u8);
 
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
-    compiler: Compiler,
-    module: *Module,
-    store: Store,
+    compiler: Compiler = undefined,
+    chunk: *Chunk = undefined,
     stack: [STACK_MAX]Value = .{Value{ .int = 0 }} ** STACK_MAX,
     top: u8 = 0,
+    ip: [*]const u8 = undefined,
 
-    pub fn free(self: *Vm) void {
-        self.module.free();
-        self.store.free();
+    pub fn free(_: *Vm) void {
+        // self.allocator.free(self.chunk);
     }
 
     pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
@@ -43,11 +40,12 @@ pub const Vm = struct {
             .line = 1,
             .column = 0,
         };
-        self.compiler = try newCompiler(self.allocator, &scanner);
-        if (self.compiler.compile()) |*module| {
-            defer module.free();
-            self.module = module;
+        self.compiler = try Compiler.new(self.allocator, &scanner);
+        if (self.compiler.compile()) |chunk| {
+            defer chunk.free();
+            self.chunk = chunk;
             self.top = 0;
+            self.ip = chunk.code.ptr;
             try self.run();
         } else |err| {
             std.debug.print("Found compile error: {any}", .{ .e = err });
@@ -67,7 +65,67 @@ pub const Vm = struct {
         print("\n", .{});
     }
 
-    fn run(_: *Vm) InterpretError!void {
+    fn run(self: *Vm) InterpretError!void {
+        var instruction = self.advance();
+        while (true) : (instruction = self.advance()) {
+            logger.debug("Running instruction {s} ({x})", .{
+                .name = @tagName(@intToEnum(OpCode, instruction)),
+                .instruction = instruction,
+            });
+            switch (@intToEnum(OpCode, instruction)) {
+                OpCode.@"return" => {
+                    logger.debug("Return value: {any}", .{ .top = self.pop() });
+                    return;
+                },
+                OpCode.int_const, OpCode.float_const => |opcode| {
+                    const value = self.getConstant();
+                    if (std.meta.activeTag(value) != switch (opcode) {
+                        OpCode.int_const => ValueTag.int,
+                        OpCode.float_const => ValueTag.float,
+                        else => unreachable,
+                    }) {
+                        return InterpretError.RuntimeError;
+                    }
+                    try self.push(value);
+                },
+                // OpCode.add, OpCode.sub, OpCode.mul, OpCode.div => |opcode| {
+                OpCode.add => {
+                    const value2 = try self.pop();
+                    switch (self.stack[self.top - 1]) {
+                        Value.int => {
+                            switch (value2) {
+                                Value.float => {
+                                    const value1 = try self.pop();
+                                    try self.push(Value{
+                                        .float = @intToFloat(f64, value1.int) + value2.float,
+                                    });
+                                },
+                                Value.int => {
+                                    self.stack[self.top - 1].int += value2.int;
+                                },
+                                else => unreachable,
+                            }
+                        },
+                        Value.float => {
+                            switch (value2) {
+                                Value.float => {
+                                    self.stack[self.top - 1].float += value2.float;
+                                },
+                                Value.int => {
+                                    const value1 = try self.pop();
+                                    try self.push(Value{
+                                        .float = value1.float + @intToFloat(f64, value2.int),
+                                    });
+                                },
+                                else => unreachable,
+                            }
+                        },
+                        else => unreachable,
+                    }
+                },
+                else => unreachable,
+            }
+        }
         // var instruction = self.advance();
         // logger.debug("Current instruction: {s} {x}\n", .{ .name = @tagName(@intToEnum(OpCode, instruction)), .instruct = instruction });
         // logger.debug("Next: {x}\n", .{ .next = self.chunk.code[self.ip] });
@@ -165,41 +223,39 @@ pub const Vm = struct {
     //     var value = self.chunk.constants.values[index];
     //     return @field(value, @tagName(tag));
     // }
-    // fn getConstant(self: *Vm) Value {
-    //     const index = self.advance();
-    //     var value = self.chunk.constants.values[index];
-    //     return value;
-    // }
 
-    // fn advance(self: *Vm) u8 {
-    //     var instruction = self.chunk.code[self.ip];
-    //     self.ip += 1;
-    //     return instruction;
-    // }
+    fn getConstant(self: *Vm) Value {
+        const index = self.advance();
+        var value = self.chunk.constants.values[index];
+        return value;
+    }
 
-    // fn push(self: *Vm, val: Value) InterpretError!void {
-    //     if (self.top >= STACK_MAX) {
-    //         return InterpretError.StackOverflow;
-    //     }
-    //     self.stack[self.top] = val;
-    //     self.top += 1;
-    // }
+    fn advance(self: *Vm) u8 {
+        var instruction = self.ip[0];
+        self.ip += 1;
+        return instruction;
+    }
 
-    // fn pop(self: *Vm) InterpretError!Value {
-    //     if (self.top == 0) {
-    //         return InterpretError.StackUnderflow;
-    //     }
-    //     self.top -= 1;
-    //     return self.stack[self.top];
-    // }
+    fn push(self: *Vm, val: Value) InterpretError!void {
+        if (self.top >= STACK_MAX) {
+            return InterpretError.StackOverflow;
+        }
+        self.stack[self.top] = val;
+        self.top += 1;
+    }
+
+    fn pop(self: *Vm) InterpretError!Value {
+        if (self.top == 0) {
+            return InterpretError.StackUnderflow;
+        }
+        self.top -= 1;
+        return self.stack[self.top];
+    }
 };
 
 pub fn newVm(allocator: *const std.mem.Allocator) !Vm {
     return Vm{
         .allocator = allocator,
-        .compiler = undefined,
-        .module = undefined,
-        .store = Store.new(allocator),
     };
 }
 
@@ -208,7 +264,7 @@ test "VM.advance" {
     const equal = std.testing.expectEqual;
     var vm = try newVm(&std.testing.allocator);
     try equal(vm.ip, 0);
-    var chunk = try Module.new(&std.testing.allocator);
+    var chunk = try Chunk.new(&std.testing.allocator);
     defer chunk.free();
     const lineInfo = &LineInfo{ .line = 0, .column = 0 };
     try chunk.write(10, lineInfo);

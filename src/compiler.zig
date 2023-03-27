@@ -1,28 +1,31 @@
 const std = @import("std");
-const mod = @import("./module.zig");
+const chunks = @import("./chunk.zig");
 const t = @import("./token.zig");
+const p = @import("./parser.zig");
+const v = @import("./values.zig");
 const LineInfo = @import("./lineInfo.zig").LineInfo;
+const OpCode = @import("./opcode.zig").OpCode;
 
 const Scanner = @import("./scanner.zig").Scanner;
-const Parser = @import("./parser.zig").Parser;
-const p = @import("./parser.zig");
 const InterpretError = @import("./vm.zig").InterpretError;
 
+const logger = std.log.scoped(.compiler);
+
 pub const ParseRule = struct {
-    prefix: *const fn (*Compiler) InterpretError!void,
-    infix: *const fn (*Compiler) InterpretError!void,
+    prefix: ?*const fn (*Compiler) InterpretError!void,
+    infix: ?*const fn (*Compiler) InterpretError!void,
     precedence: p.Precedence,
 };
 
 pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
     var enum_array = std.EnumArray(t.TokenType, ParseRule).initFill(ParseRule{
-        .prefix = undefined,
-        .infix = undefined,
+        .prefix = null,
+        .infix = null,
         .precedence = p.Precedence.none,
     });
     enum_array.set(t.TokenType.left_paren, ParseRule{
         .prefix = &Compiler.grouping,
-        .infix = undefined,
+        .infix = null,
         .precedence = p.Precedence.none,
     });
     enum_array.set(t.TokenType.minus, ParseRule{
@@ -31,65 +34,81 @@ pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
         .precedence = p.Precedence.term,
     });
     enum_array.set(t.TokenType.plus, ParseRule{
-        .prefix = undefined,
+        .prefix = null,
         .infix = &Compiler.binary,
         .precedence = p.Precedence.term,
     });
     enum_array.set(t.TokenType.slash, ParseRule{
-        .prefix = undefined,
+        .prefix = null,
         .infix = &Compiler.binary,
         .precedence = p.Precedence.factor,
     });
     enum_array.set(t.TokenType.star, ParseRule{
-        .prefix = undefined,
+        .prefix = null,
         .infix = &Compiler.binary,
         .precedence = p.Precedence.factor,
     });
     enum_array.set(t.TokenType.integer, ParseRule{
         .prefix = &Compiler.number,
-        .infix = undefined,
+        .infix = null,
         .precedence = p.Precedence.none,
     });
     enum_array.set(t.TokenType.float, ParseRule{
         .prefix = &Compiler.number,
-        .infix = undefined,
+        .infix = null,
         .precedence = p.Precedence.none,
     });
     break :prat_init enum_array;
 };
 fn getRule(tokenType: t.TokenType) *const ParseRule {
-    return rules.getPtrConst(tokenType);
+    const rule = rules.getPtrConst(tokenType);
+    logger.debug("Getting rule for {any}: {any}", .{ .typ = tokenType, .rule = rule });
+    return rule;
 }
 
 pub const Compiler = struct {
     allocator: *const std.mem.Allocator,
-    module: mod.Module,
+    chunk: *chunks.Chunk,
     scanner: *Scanner,
-    parser: Parser,
+    parser: p.Parser,
     last_type: p.NumberTag,
-    currentFunc: *mod.func,
-    currentBody: std.ArrayList(u8),
 
-    pub fn compile(self: *Compiler) !mod.Module {
+    pub fn new(alloc: *const std.mem.Allocator, scanner: *Scanner) !Compiler {
+        var chunk = try alloc.create(chunks.Chunk);
+        try chunk.init(alloc);
+        return Compiler{
+            .allocator = alloc,
+            .chunk = chunk,
+            .last_type = p.NumberTag.int,
+            .scanner = scanner,
+            .parser = p.Parser.new(scanner),
+        };
+    }
+
+    pub fn free(self: *Compiler) void {
+        self.chunk.free();
+        self.allocator.destroy(self.chunk);
+    }
+
+    pub fn compile(self: *Compiler) !*chunks.Chunk {
         self.parser.advance();
         try self.expression();
         try self.end();
-        return self.module;
+        return self.chunk;
     }
 
     fn end(self: *Compiler) !void {
-        try self.emitOp(std.wasm.Opcode.@"return");
-        try self.emitOp(std.wasm.Opcode.end);
-        self.currentFunc.body = &self.currentBody.items;
+        try self.emitOp(OpCode.@"return");
     }
 
-    fn emitOp(self: *Compiler, op: std.wasm.Opcode) !void {
-        try self.currentBody.append(@enumToInt(op));
+    fn emitOp(self: *Compiler, op: OpCode) !void {
+        try self.chunk.write(@enumToInt(op), self.getLineInfo());
     }
 
-    fn emitUnaryOp(self: *Compiler, op: std.wasm.Opcode, operand: u8) !void {
-        try self.currentBody.append(@enumToInt(op));
-        try self.currentBody.append(operand);
+    fn emitUnaryOp(self: *Compiler, op: OpCode, operand: u8) !void {
+        const lineInfo = self.getLineInfo();
+        try self.chunk.write(@enumToInt(op), lineInfo);
+        try self.chunk.write(operand, lineInfo);
     }
 
     pub fn getLineInfo(self: *Compiler) LineInfo {
@@ -99,22 +118,24 @@ pub const Compiler = struct {
     fn parsePrecedence(self: *Compiler, precedence: p.Precedence) !void {
         self.parser.advance();
         var prefixRule = getRule(self.parser.previous.type).prefix;
-        if (prefixRule == undefined) {
-            std.debug.print("Found undefined prefix rule\n", .{});
+        logger.debug("Parse Precedence: {any} is undefined? {?}", .{ .previous = self.parser.previous, .defined = (prefixRule == undefined) });
+        if (prefixRule) |rule| {
+            try rule(self);
+        } else {
+            logger.debug("Found undefined prefix rule", .{});
             return InterpretError.CompileError;
         }
-
-        try prefixRule(self);
 
         const prec = @enumToInt(precedence);
         while (prec <= @enumToInt(getRule(self.parser.current.type).precedence)) {
             self.parser.advance();
             var infixRule = getRule(self.parser.previous.type).infix;
-            std.debug.print("Infix rule: {any}\n", .{ .in = infixRule });
-            if (infixRule == undefined) {
+            logger.debug("Infix rule: {any}", .{ .in = infixRule });
+            if (infixRule) |rule| {
+                try rule(self);
+            } else {
                 return InterpretError.CompileError;
             }
-            try infixRule(self);
         }
     }
 
@@ -130,15 +151,19 @@ pub const Compiler = struct {
                 try self.writeInt(num.int);
             },
             p.NumberTag.float => {
-                try self.emitOp(std.wasm.Opcode.f64_const);
                 try self.writeFloat(num.float);
             },
         }
     }
 
     fn writeInt(self: *Compiler, i: i64) !void {
-        try self.emitOp(std.wasm.Opcode.i64_const);
-        try std.leb.writeILEB128(self.currentBody.writer(), i);
+        const index = try self.chunk.addConstant(v.Value{ .int = i });
+        try self.emitUnaryOp(OpCode.int_const, index);
+    }
+
+    fn writeFloat(self: *Compiler, f: f64) !void {
+        const index = try self.chunk.addConstant(v.Value{ .float = f });
+        try self.emitUnaryOp(OpCode.float_const, index);
     }
 
     fn grouping(self: *Compiler) !void {
@@ -151,15 +176,7 @@ pub const Compiler = struct {
         try self.parsePrecedence(p.Precedence.unary);
         switch (tokenType) {
             t.TokenType.minus => {
-                switch (self.last_type) {
-                    p.NumberTag.int => {
-                        try self.writeInt(-1);
-                        try self.emitOp(std.wasm.Opcode.i64_mul);
-                    },
-                    p.NumberTag.float => {
-                        try self.emitOp(std.wasm.Opcode.f64_neg);
-                    },
-                }
+                try self.emitOp(OpCode.negate);
             },
             else => unreachable,
         }
@@ -167,59 +184,24 @@ pub const Compiler = struct {
 
     fn binary(self: *Compiler) !void {
         var opType = self.parser.previous.type;
-        std.debug.print("Binary op type: {s}", .{ .typ = @tagName(opType) });
+        logger.debug("Binary op type: {s}", .{ .typ = @tagName(opType) });
         var rule = getRule(opType);
         try self.parsePrecedence(@intToEnum(p.Precedence, @enumToInt(rule.precedence) + 1));
 
         switch (opType) {
             t.TokenType.plus => {
-                switch (self.last_type) {
-                    p.NumberTag.int => try self.emitOp(std.wasm.Opcode.i64_add),
-                    p.NumberTag.float => try self.emitOp(std.wasm.Opcode.f64_add),
-                }
+                try self.emitOp(OpCode.add);
             },
             t.TokenType.minus => {
-                switch (self.last_type) {
-                    p.NumberTag.int => try self.emitOp(std.wasm.Opcode.i64_sub),
-                    p.NumberTag.float => try self.emitOp(std.wasm.Opcode.f64_sub),
-                }
+                try self.emitOp(OpCode.sub);
             },
             t.TokenType.star => {
-                switch (self.last_type) {
-                    p.NumberTag.int => try self.emitOp(std.wasm.Opcode.i64_mul),
-                    p.NumberTag.float => try self.emitOp(std.wasm.Opcode.f64_mul),
-                }
+                try self.emitOp(OpCode.mul);
             },
             t.TokenType.slash => {
-                switch (self.last_type) {
-                    p.NumberTag.int => try self.emitOp(std.wasm.Opcode.i64_div_s),
-                    p.NumberTag.float => try self.emitOp(std.wasm.Opcode.f64_div),
-                }
+                try self.emitOp(OpCode.div);
             },
             else => unreachable,
         }
     }
-
-    fn writeFloat(self: *Compiler, f: f64) !void {
-        var bytes = std.mem.toBytes(std.mem.nativeToLittle(f64, f));
-        _ = try self.currentBody.writer().write(&bytes);
-    }
 };
-pub fn new(alloc: *const std.mem.Allocator, scanner: *Scanner) !Compiler {
-    var module = mod.Module.new(alloc);
-    _ = try module.types.addOne();
-    const fTypeIndex = module.types.items.len - 1;
-    var startFunc = try module.funcs.addOne();
-    startFunc.type = @intCast(u32, fTypeIndex);
-    const start = module.funcs.items.len - 1;
-    module.start = @intCast(u32, start);
-    return Compiler{
-        .allocator = alloc,
-        .module = module,
-        .currentFunc = startFunc,
-        .currentBody = std.ArrayList(u8).init(alloc.*),
-        .last_type = p.NumberTag.int,
-        .scanner = scanner,
-        .parser = Parser.new(scanner),
-    };
-}

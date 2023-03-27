@@ -2,18 +2,14 @@ const std = @import("std");
 
 pub const ValueTag = enum {
     int,
-    long,
     float,
-    double,
     boolean,
 };
 
 pub const Value = union(ValueTag) {
-    int: i32,
-    long: i64,
-    float: f32,
-    double: f64,
-    boolean: i32,
+    int: i64,
+    float: f64,
+    boolean: bool,
 };
 
 pub const ValueArray = struct {
@@ -22,8 +18,16 @@ pub const ValueArray = struct {
     values: []Value,
     allocator: *const std.mem.Allocator,
 
+    pub fn new(allocator: *const std.mem.Allocator) !ValueArray {
+        return ValueArray{
+            .capacity = 8,
+            .values = try allocator.alloc(Value, 8),
+            .allocator = allocator,
+        };
+    }
+
     pub fn free(self: *ValueArray) void {
-        self.allocator.free(self.*.values);
+        self.allocator.free(self.values);
     }
 
     pub fn write(self: *ValueArray, value: Value) !u8 {
@@ -38,16 +42,12 @@ pub const ValueArray = struct {
         self.count += 1;
         return index;
     }
+
+    pub fn get(self: *ValueArray, index: u8) Value {
+        return self.values[index];
+    }
 };
 
-pub fn newValueArray(allocator: *const std.mem.Allocator) !ValueArray {
-    var arr = ValueArray{
-        .capacity = 8,
-        .values = try allocator.alloc(Value, 8),
-        .allocator = allocator,
-    };
-    return arr;
-}
 fn growCapacity(capacity: u8) u8 {
     if (capacity < 8) {
         return 8;

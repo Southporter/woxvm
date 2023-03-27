@@ -53,8 +53,8 @@ pub const Parser = struct {
         self.previous = self.current;
         var scanner = self.scanner;
 
-        std.debug.print("Scanner source in parser advance: {s}\n", .{ .source = self.scanner.source[0..] });
         if (scanner.next()) |tok| {
+            std.debug.print("Next tok: {any}\n", .{ .tok = tok });
             if (tok == null) {
                 self.handleError("Unexpected end of file");
             } else {
