@@ -4,12 +4,14 @@ pub const ValueTag = enum {
     int,
     float,
     boolean,
+    nil,
 };
 
 pub const Value = union(ValueTag) {
     int: i64,
     float: f64,
     boolean: bool,
+    nil: void,
 };
 
 pub const ValueArray = struct {

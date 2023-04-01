@@ -20,6 +20,22 @@ const logger = std.log.scoped(.vm);
 
 const STACK_MAX = std.math.maxInt(u8);
 
+fn runArith(comptime T: type, op: OpCode, lhs: T, rhs: T) T {
+    return switch (op) {
+        OpCode.add => lhs + rhs,
+        OpCode.sub => lhs - rhs,
+        OpCode.mul => lhs * rhs,
+        OpCode.div => div: {
+            if (T == comptime_float) {
+                break :div lhs / rhs;
+            } else {
+                break :div @divTrunc(lhs, rhs);
+            }
+        },
+        else => unreachable,
+    };
+}
+
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
     compiler: Compiler = undefined,
@@ -29,7 +45,7 @@ pub const Vm = struct {
     ip: [*]const u8 = undefined,
 
     pub fn free(_: *Vm) void {
-        // self.allocator.free(self.chunk);
+        // self.compiler.free();
     }
 
     pub fn interpret(self: *Vm, source: []u8) InterpretError!void {
@@ -42,7 +58,7 @@ pub const Vm = struct {
         };
         self.compiler = try Compiler.new(self.allocator, &scanner);
         if (self.compiler.compile()) |chunk| {
-            defer chunk.free();
+            defer self.compiler.free();
             self.chunk = chunk;
             self.top = 0;
             self.ip = chunk.code.ptr;
@@ -53,7 +69,7 @@ pub const Vm = struct {
     }
 
     fn printStack(self: *Vm) void {
-        if (std.log.level != .debug) {
+        if (std.log.logEnabled(.debug, .vm)) {
             return;
         }
         const print = std.debug.print;
@@ -72,7 +88,8 @@ pub const Vm = struct {
                 .name = @tagName(@intToEnum(OpCode, instruction)),
                 .instruction = instruction,
             });
-            switch (@intToEnum(OpCode, instruction)) {
+            self.printStack();
+            try switch (@intToEnum(OpCode, instruction)) {
                 OpCode.@"return" => {
                     logger.debug("Return value: {any}", .{ .top = self.pop() });
                     return;
@@ -88,8 +105,7 @@ pub const Vm = struct {
                     }
                     try self.push(value);
                 },
-                // OpCode.add, OpCode.sub, OpCode.mul, OpCode.div => |opcode| {
-                OpCode.add => {
+                OpCode.add, OpCode.sub, OpCode.mul, OpCode.div => |opcode| {
                     const value2 = try self.pop();
                     switch (self.stack[self.top - 1]) {
                         Value.int => {
@@ -97,34 +113,55 @@ pub const Vm = struct {
                                 Value.float => {
                                     const value1 = try self.pop();
                                     try self.push(Value{
-                                        .float = @intToFloat(f64, value1.int) + value2.float,
+                                        .float = runArith(f64, opcode, @intToFloat(f64, value1.int), value2.float),
                                     });
                                 },
                                 Value.int => {
-                                    self.stack[self.top - 1].int += value2.int;
+                                    self.stack[self.top - 1].int = runArith(i64, opcode, self.stack[self.top - 1].int, value2.int);
                                 },
-                                else => unreachable,
+                                else => return InterpretError.RuntimeError,
                             }
                         },
                         Value.float => {
                             switch (value2) {
                                 Value.float => {
-                                    self.stack[self.top - 1].float += value2.float;
+                                    self.stack[self.top - 1].float = runArith(f64, opcode, self.stack[self.top - 1].float, value2.float);
                                 },
                                 Value.int => {
                                     const value1 = try self.pop();
                                     try self.push(Value{
-                                        .float = value1.float + @intToFloat(f64, value2.int),
+                                        .float = runArith(f64, opcode, value1.float, @intToFloat(f64, value2.int)),
                                     });
                                 },
-                                else => unreachable,
+                                else => return InterpretError.RuntimeError,
                             }
                         },
-                        else => unreachable,
+                        else => return InterpretError.RuntimeError,
                     }
                 },
-                else => unreachable,
-            }
+                OpCode.negate => {
+                    switch (self.stack[self.top - 1]) {
+                        Value.float => |*f| {
+                            f.* = -f.*;
+                        },
+                        Value.int => |*i| {
+                            i.* = -i.*;
+                        },
+                        else => return InterpretError.RuntimeError,
+                    }
+                },
+                OpCode.not => {
+                    try self.push(try self.isFalsey());
+                },
+                OpCode.nil => self.push(Value{ .nil = {} }),
+                OpCode.true => self.push(Value{ .boolean = true }),
+                OpCode.false => self.push(Value{ .boolean = false }),
+                OpCode.print => {
+                    std.fmt.format(std.io.getStdOut().writer(), "{any}", .{ .v = try self.pop() }) catch |e| {
+                        logger.err("Error printing: {any}", .{ .e = e });
+                    };
+                },
+            };
         }
         // var instruction = self.advance();
         // logger.debug("Current instruction: {s} {x}\n", .{ .name = @tagName(@intToEnum(OpCode, instruction)), .instruct = instruction });
@@ -230,6 +267,15 @@ pub const Vm = struct {
         return value;
     }
 
+    fn isFalsey(self: *Vm) InterpretError!Value {
+        const top = try self.pop();
+        return switch (top) {
+            Value.nil => Value{ .boolean = true },
+            Value.boolean => |b| Value{ .boolean = !b },
+            else => Value{ .boolean = false },
+        };
+    }
+
     fn advance(self: *Vm) u8 {
         var instruction = self.ip[0];
         self.ip += 1;
@@ -250,6 +296,10 @@ pub const Vm = struct {
         }
         self.top -= 1;
         return self.stack[self.top];
+    }
+
+    fn peek(self: *Vm, distance: u8) Value {
+        return self.stack[self.top - 1 - distance];
     }
 };
 

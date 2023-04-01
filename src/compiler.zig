@@ -48,6 +48,11 @@ pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
         .infix = &Compiler.binary,
         .precedence = p.Precedence.factor,
     });
+    enum_array.set(t.TokenType.bang, ParseRule{
+        .prefix = &Compiler.unary,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
     enum_array.set(t.TokenType.integer, ParseRule{
         .prefix = &Compiler.number,
         .infix = null,
@@ -55,6 +60,26 @@ pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
     });
     enum_array.set(t.TokenType.float, ParseRule{
         .prefix = &Compiler.number,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
+    enum_array.set(t.TokenType.true, ParseRule{
+        .prefix = &Compiler.literal,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
+    enum_array.set(t.TokenType.false, ParseRule{
+        .prefix = &Compiler.literal,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
+    enum_array.set(t.TokenType.nil, ParseRule{
+        .prefix = &Compiler.literal,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
+    enum_array.set(t.TokenType.print, ParseRule{
+        .prefix = &Compiler.keyword,
         .infix = null,
         .precedence = p.Precedence.none,
     });
@@ -178,6 +203,9 @@ pub const Compiler = struct {
             t.TokenType.minus => {
                 try self.emitOp(OpCode.negate);
             },
+            t.TokenType.bang => {
+                try self.emitOp(OpCode.not);
+            },
             else => unreachable,
         }
     }
@@ -201,6 +229,26 @@ pub const Compiler = struct {
             t.TokenType.slash => {
                 try self.emitOp(OpCode.div);
             },
+            else => unreachable,
+        }
+    }
+
+    fn literal(self: *Compiler) !void {
+        var lit = self.parser.previous.type;
+
+        switch (lit) {
+            t.TokenType.nil => try self.emitOp(OpCode.nil),
+            t.TokenType.true => try self.emitOp(OpCode.true),
+            t.TokenType.false => try self.emitOp(OpCode.false),
+            else => unreachable,
+        }
+    }
+
+    fn keyword(self: *Compiler) !void {
+        switch (self.parser.previous.type) {
+            // t.TokenType.print => try self.emitOp(OpCode.print),
+            t.TokenType.print => {},
+
             else => unreachable,
         }
     }
