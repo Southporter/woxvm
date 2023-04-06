@@ -36,6 +36,45 @@ fn runArith(comptime T: type, op: OpCode, lhs: T, rhs: T) T {
     };
 }
 
+fn valuesEqual(a: Value, b: Value) bool {
+    return switch (a) {
+        Value.int => |i| switch (b) {
+            Value.int => |j| i == j,
+            Value.float => |f| @intToFloat(f64, i) == f,
+            else => false,
+        },
+        Value.float => |f| switch (b) {
+            Value.int => |i| @intToFloat(f64, i) == f,
+            Value.float => |g| f == g,
+            else => false,
+        },
+        Value.nil => switch (b) {
+            Value.nil => true,
+            else => false,
+        },
+        Value.boolean => |k| switch (b) {
+            Value.boolean => |l| k == l,
+            else => false,
+        },
+    };
+}
+
+fn valuesGreater(val1: Value, val2: Value) InterpretError!bool {
+    return switch (val1) {
+        Value.int => |a| switch (val2) {
+            Value.int => |b| a > b,
+            Value.float => |b| @intToFloat(f64, a) > b,
+            else => InterpretError.RuntimeError,
+        },
+        Value.float => |a| switch (val2) {
+            Value.int => |b| a > @intToFloat(f64, b),
+            Value.float => |b| a > b,
+            else => InterpretError.RuntimeError,
+        },
+        else => InterpretError.RuntimeError,
+    };
+}
+
 pub const Vm = struct {
     allocator: *const std.mem.Allocator,
     compiler: Compiler = undefined,
@@ -152,6 +191,21 @@ pub const Vm = struct {
                 },
                 OpCode.not => {
                     try self.push(try self.isFalsey());
+                },
+                OpCode.equal => {
+                    const v1 = try self.pop();
+                    const v2 = try self.pop();
+                    try self.push(Value{ .boolean = valuesEqual(v1, v2) });
+                },
+                OpCode.greater => {
+                    const v1 = try self.pop();
+                    const v2 = try self.pop();
+                    try self.push(Value{ .boolean = try valuesGreater(v2, v1) });
+                },
+                OpCode.less => {
+                    const v1 = try self.pop();
+                    const v2 = try self.pop();
+                    try self.push(Value{ .boolean = try valuesGreater(v1, v2) });
                 },
                 OpCode.nil => self.push(Value{ .nil = {} }),
                 OpCode.true => self.push(Value{ .boolean = true }),

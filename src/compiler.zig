@@ -78,6 +78,41 @@ pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
         .infix = null,
         .precedence = p.Precedence.none,
     });
+    enum_array.set(t.TokenType.bang_equal, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.equality,
+    });
+    enum_array.set(t.TokenType.equal_equal, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.equality,
+    });
+    enum_array.set(t.TokenType.greater, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.comparison,
+    });
+    enum_array.set(t.TokenType.greater_equal, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.comparison,
+    });
+    enum_array.set(t.TokenType.less, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.comparison,
+    });
+    enum_array.set(t.TokenType.less_equal, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.comparison,
+    });
+    enum_array.set(t.TokenType.greater, ParseRule{
+        .prefix = null,
+        .infix = &Compiler.binary,
+        .precedence = p.Precedence.comparison,
+    });
     enum_array.set(t.TokenType.print, ParseRule{
         .prefix = &Compiler.keyword,
         .infix = null,
@@ -128,6 +163,11 @@ pub const Compiler = struct {
 
     fn emitOp(self: *Compiler, op: OpCode) !void {
         try self.chunk.write(@enumToInt(op), self.getLineInfo());
+    }
+
+    fn emitOps(self: *Compiler, op1: OpCode, op2: OpCode) !void {
+        try self.chunk.write(@enumToInt(op1), self.getLineInfo());
+        try self.chunk.write(@enumToInt(op2), self.getLineInfo());
     }
 
     fn emitUnaryOp(self: *Compiler, op: OpCode, operand: u8) !void {
@@ -217,6 +257,24 @@ pub const Compiler = struct {
         try self.parsePrecedence(@intToEnum(p.Precedence, @enumToInt(rule.precedence) + 1));
 
         switch (opType) {
+            t.TokenType.bang_equal => {
+                try self.emitOps(OpCode.equal, OpCode.not);
+            },
+            t.TokenType.equal_equal => {
+                try self.emitOp(OpCode.equal);
+            },
+            t.TokenType.greater => {
+                try self.emitOp(OpCode.greater);
+            },
+            t.TokenType.greater_equal => {
+                try self.emitOps(OpCode.less, OpCode.not);
+            },
+            t.TokenType.less => {
+                try self.emitOp(OpCode.less);
+            },
+            t.TokenType.less_equal => {
+                try self.emitOps(OpCode.greater, OpCode.not);
+            },
             t.TokenType.plus => {
                 try self.emitOp(OpCode.add);
             },
