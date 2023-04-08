@@ -3,6 +3,7 @@ const chunks = @import("./chunk.zig");
 const t = @import("./token.zig");
 const p = @import("./parser.zig");
 const v = @import("./values.zig");
+const o = @import("./objects.zig");
 const LineInfo = @import("./lineInfo.zig").LineInfo;
 const OpCode = @import("./opcode.zig").OpCode;
 
@@ -60,6 +61,11 @@ pub const rules: std.EnumArray(t.TokenType, ParseRule) = prat_init: {
     });
     enum_array.set(t.TokenType.float, ParseRule{
         .prefix = &Compiler.number,
+        .infix = null,
+        .precedence = p.Precedence.none,
+    });
+    enum_array.set(t.TokenType.string, ParseRule{
+        .prefix = &Compiler.string,
         .infix = null,
         .precedence = p.Precedence.none,
     });
@@ -219,6 +225,14 @@ pub const Compiler = struct {
                 try self.writeFloat(num.float);
             },
         }
+    }
+
+    fn string(self: *Compiler) InterpretError!void {
+        var str_tok = self.parser.previous.lexeme;
+        var str_obj = try self.allocator.create(o.String);
+        str_obj.init(try self.allocator.dupe(u8, str_tok[1..(str_tok.len - 2)]));
+        const index = try self.chunk.addConstant(v.Value{ .object = @ptrCast(*o.Object, str_obj) });
+        try self.emitUnaryOp(OpCode.constant, index);
     }
 
     fn writeInt(self: *Compiler, i: i64) !void {

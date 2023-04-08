@@ -1,10 +1,12 @@
 const std = @import("std");
+const Object = @import("./objects.zig");
 
 pub const ValueTag = enum {
     int,
     float,
     boolean,
     nil,
+    object,
 };
 
 pub const Value = union(ValueTag) {
@@ -12,6 +14,7 @@ pub const Value = union(ValueTag) {
     float: f64,
     boolean: bool,
     nil: void,
+    object: *Object,
 };
 
 pub const ValueArray = struct {

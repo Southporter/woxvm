@@ -3,6 +3,7 @@ const Scanner = @import("./scanner.zig").Scanner;
 const Chunk = @import("./chunk.zig").Chunk;
 const OpCode = @import("./opcode.zig").OpCode;
 const Value = @import("./values.zig").Value;
+const Object = @import("./objects.zig");
 const ValueTag = @import("./values.zig").ValueTag;
 const disassembleInstruction = @import("./disassemble.zig").disassembleInstruction;
 const Compiler = @import("./compiler.zig").Compiler;
@@ -54,6 +55,10 @@ fn valuesEqual(a: Value, b: Value) bool {
         },
         Value.boolean => |k| switch (b) {
             Value.boolean => |l| k == l,
+            else => false,
+        },
+        Value.object => |o| switch (b) {
+            Value.object => |j| o == j,
             else => false,
         },
     };
@@ -133,11 +138,12 @@ pub const Vm = struct {
                     logger.debug("Return value: {any}", .{ .top = self.pop() });
                     return;
                 },
-                OpCode.int_const, OpCode.float_const => |opcode| {
+                OpCode.int_const, OpCode.float_const, OpCode.constant => |opcode| {
                     const value = self.getConstant();
                     if (std.meta.activeTag(value) != switch (opcode) {
                         OpCode.int_const => ValueTag.int,
                         OpCode.float_const => ValueTag.float,
+                        OpCode.constant => ValueTag.object,
                         else => unreachable,
                     }) {
                         return InterpretError.RuntimeError;
@@ -175,6 +181,11 @@ pub const Vm = struct {
                                 else => return InterpretError.RuntimeError,
                             }
                         },
+                        Value.object => |obj| {
+                            switch (obj.type) {
+                                o.
+                              }
+                          }
                         else => return InterpretError.RuntimeError,
                     }
                 },

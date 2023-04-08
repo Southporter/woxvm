@@ -5,6 +5,7 @@ pub const OpCode = enum(u8) {
     print,
     int_const,
     float_const,
+    constant,
     nil,
     true,
     false,

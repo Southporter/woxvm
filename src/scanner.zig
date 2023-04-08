@@ -73,6 +73,11 @@ pub const Scanner = struct {
                 t.TokenType.greater_equal
             else
                 t.TokenType.greater),
+            '"' => str: {
+                var s = self.advance();
+                while (s != '"') : (s = self.advance()) {}
+                break :str self.makeToken(t.TokenType.string);
+            },
             else => error.UnexpectedCharacter,
         };
     }
