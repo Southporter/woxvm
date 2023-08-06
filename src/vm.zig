@@ -181,11 +181,25 @@ pub const Vm = struct {
                                 else => return InterpretError.RuntimeError,
                             }
                         },
-                        Value.object => |obj| {
-                            switch (obj.type) {
-                                o.
-                              }
-                          }
+                        Value.object => |obj1| {
+                            switch (obj1.type) {
+                                Object.Type.string => {
+                                    switch (value2) {
+                                        Value.object => |obj2| {
+                                            _ = try self.pop();
+                                            const str1 = obj1.narrow(Object.String);
+                                            const str2 = obj2.narrow(Object.String);
+                                            var str_obj = try self.allocator.create(Object.String);
+                                            str_obj.init(try std.mem.concat(self.allocator.*, u8, &[_][]const u8{ str1.chars, str2.chars }));
+                                            try self.push(Value{
+                                                .object = str_obj.widen(),
+                                            });
+                                        },
+                                        else => InterpretError.RuntimeError,
+                                    }
+                                },
+                            }
+                        },
                         else => return InterpretError.RuntimeError,
                     }
                 },
