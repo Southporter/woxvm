@@ -17,7 +17,7 @@ pub fn repl(allocator: std.mem.Allocator) !void {
         unreachable;
     }
     var compiler: Compiler = undefined;
-    compiler.init(allocator);
+    try compiler.init(allocator);
     defer compiler.deinit();
     while (true) {
         _ = try out.write("> ");
@@ -41,7 +41,7 @@ fn runFile(allocator: std.mem.Allocator, path: []const u8) !void {
     const f = try std.fs.openFileAbsolute(path, std.fs.File.OpenFlags{});
     _ = try f.readAll(&buf);
     var compiler: Compiler = undefined;
-    compiler.init(allocator);
+    try compiler.init(allocator);
     defer compiler.deinit();
     compiler.initSource(&buf);
     try compiler.compile();
@@ -85,4 +85,8 @@ pub fn main() anyerror!void {
     // disassembler.disassemble(&chunk, "test chunk");
 
     // try vm.interpret(&chunk);
+}
+
+test "main" {
+    _ = @import("Scanner.zig");
 }
